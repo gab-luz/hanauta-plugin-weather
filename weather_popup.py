@@ -36,8 +36,10 @@ from pyqt.shared.weather import (
     AnimatedWeatherIcon,
     WeatherForecast,
     animated_icon_path,
+    cache_age_seconds,
     configured_city,
     fetch_forecast,
+    load_cached_forecast,
     static_icon_path,
 )
 
@@ -96,12 +98,26 @@ def tinted_static_icon(path: Path, color: QColor, size: int) -> QPixmap:
 class ForecastWorker(QThread):
     loaded = pyqtSignal(object)
     failed = pyqtSignal(str)
+    cache_hit = pyqtSignal(bool)
+
+    def __init__(self, force_refresh: bool = False) -> None:
+        super().__init__()
+        self.force_refresh = force_refresh
 
     def run(self) -> None:
         city = configured_city()
         if city is None:
             self.failed.emit("Choose a city in Weather settings first.")
             return
+
+        if not self.force_refresh:
+            cached = load_cached_forecast(city)
+            if cached is not None:
+                self.cache_hit.emit(True)
+                self.loaded.emit(cached)
+                return
+
+        self.cache_hit.emit(False)
         forecast = fetch_forecast(city)
         if forecast is None:
             self.failed.emit("Weather data could not be loaded from Open-Meteo.")
@@ -268,7 +284,7 @@ class WeatherPopup(QWidget):
         self.refresh_button.setObjectName("refreshButton")
         self.refresh_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.refresh_button.setFont(QFont(self.ui_font, 10, QFont.Weight.DemiBold))
-        self.refresh_button.clicked.connect(self.refresh_forecast)
+        self.refresh_button.clicked.connect(lambda: self.refresh_forecast(force_refresh=True))
         header.addWidget(self.refresh_button, 0, Qt.AlignmentFlag.AlignTop)
 
         self.settings_button = QPushButton("\ue8b8")
@@ -542,16 +558,30 @@ class WeatherPopup(QWidget):
         self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._fade.start()
 
-    def refresh_forecast(self) -> None:
+    def refresh_forecast(self, force_refresh: bool = False) -> None:
         if self.worker is not None and self.worker.isRunning():
             return
-        self.status_label.setText("Refreshing weather forecast…")
+        self.status_label.setText("Loading weather forecast…")
         self.refresh_button.setDisabled(True)
-        self.worker = ForecastWorker()
+        self.worker = ForecastWorker(force_refresh=force_refresh)
         self.worker.loaded.connect(self._apply_forecast)
+        self.worker.cache_hit.connect(self._on_cache_hit)
         self.worker.failed.connect(self._show_error)
         self.worker.finished.connect(self._finish_worker)
         self.worker.start()
+
+    def _on_cache_hit(self, from_cache: bool) -> None:
+        age = cache_age_seconds()
+        if from_cache and age is not None:
+            minutes = int(age // 60)
+            if minutes < 1:
+                self.status_label.setText("Loaded from cache (just now).")
+            elif minutes == 1:
+                self.status_label.setText("Loaded from cache (1 min ago).")
+            else:
+                self.status_label.setText(f"Loaded from cache ({minutes} min ago).")
+        elif from_cache:
+            self.status_label.setText("Loaded from cache.")
 
     def _clear_forecast_rows(self) -> None:
         self.forecast_rows.clear()

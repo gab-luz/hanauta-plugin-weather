@@ -1,0 +1,12 @@
+{
+  "plugin_id": "weather_widget",
+  "tasks": [
+    {
+      "id": "weather_cache",
+      "command": ["python3", "${PLUGIN_DIR}/weather_cache.py"],
+      "interval_seconds": 900,
+      "timeout_seconds": 15,
+      "working_dir": "${PLUGIN_DIR}"
+    }
+  ]
+}
