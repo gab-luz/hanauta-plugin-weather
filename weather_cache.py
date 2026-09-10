@@ -54,6 +54,7 @@ def _extract_city(weather: dict[str, Any]) -> dict[str, Any] | None:
             "latitude": float(weather["latitude"]),
             "longitude": float(weather["longitude"]),
             "timezone": str(weather.get("timezone", "auto")).strip() or "auto",
+            "language": str(weather.get("language", "en")).strip() or "en",
         }
     except Exception:
         return None
@@ -65,6 +66,7 @@ def _fetch_payload(city: dict[str, Any]) -> dict[str, Any] | None:
             "latitude": f"{city['latitude']:.5f}",
             "longitude": f"{city['longitude']:.5f}",
             "timezone": city["timezone"],
+            "language": city.get("language", "en"),
             "forecast_days": "7",
             "current": ",".join(
                 [
